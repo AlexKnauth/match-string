@@ -163,6 +163,35 @@
     (syntax-parse stx
       [(append) #''()]
       [(append pat) #'pat]
+      [(append pat ooo:ooo)
+       (with-syntax ([ooo #'ooo.norm] [k (attribute ooo.k)])
+         #'(app (local [;; try : (Listof Any) Natural -> (U (Listof Any) #f)
+                        (define (try lst i)
+                          (match lst
+                            [(list)
+                             (cond [(<= k i) '()]
+                                   [else (match '()
+                                           [pat
+                                            (if-let [it (try '() (add1 i))]
+                                                    (cons '() it)
+                                                    #false)]
+                                           [_ #false])])]
+                            [(list '() ..0)
+                             (try '() i)]
+                            [(list-rest (and lst1 pat) rest)
+                             (if-let [it (try rest (add1 i))]
+                                     (cons lst1 it)
+                                     (failure-cont))]
+                            [(list-rest (list lst1 ..0 last) lst2 rest)
+                             (try (list* lst1 (cons last lst2) rest) i)]
+                            [(list-rest '() rest)
+                             #false]
+                            [(list (list-rest lst1 ..0 (and rst (not (? pair?)))))
+                             (try (list lst1 rst) i)]
+                            [_ (error 'append "!!! lst = ~v" lst) #false]))]
+                  (lambda (val)
+                    (try (list val) 0)))
+                (list pat ooo)))]
       [(append pat1 pat2)
        #'(app (local [;; List Any -> (or/c (list List Any) #f)
                       ;; matches p1 and p2 against pat1 and pat2, and
@@ -170,13 +199,16 @@
                       (define (try p1 p2)
                         (match* (p1 p2)
                           [(pat1 pat2) (list p1 p2)]
-                          [(p1 (cons p2-first p2-rest))
-                           (let ([p1+p2-first (append p1 (list p2-first))])
-                             (try p1+p2-first p2-rest))]
+                          [((list lst1 ..0 last) lst2)
+                           (try lst1 (cons last lst2))]
                           [(_ _) #false]))]
                 (lambda (val)
-                  (try '() val)))
+                  (match val
+                    [(list-rest lst1 ..0 (and rst (not (? pair?))))
+                     (try lst1 rst)])))
               (list pat1 pat2))]
+      [(append pat1:expr ooo:ooo pat2:pat-maybe-elipsis ...)
+       #'(append (append pat1 ooo.norm) pat2.norm ...)]
       [(append pat1 pat2 ...)
        #'(append pat1 (append pat2 ...))]
       ))
@@ -513,5 +545,46 @@
   (check-false (match "abab"
                  [(string-append "ab" ..3) #t]
                  [_ #f]))
+  
+  (check-equal? (match '(a b a b a b a b)
+                  [(append (and lol (or '(a b) '(a b a b))) ..3)
+                   lol])
+                '((a b a b) (a b) (a b)))
+  
+  (check-equal? (match '(a b a b)
+                  [(append (and lol (or '(a b) '(a b a b))) ..2)
+                   lol])
+                '((a b) (a b)))
+  
+  (check-equal? (match '(a b a b a b a b)
+                  [(append (and lol (append '(a b) ...+)) ..3)
+                   lol])
+                '((a b a b) (a b) (a b)))
+  (check-equal? (match '(a b a b a b a b)
+                  [(append (and lol (append '(a b) ...)) ..3)
+                   lol])
+                '((a b a b a b a b) () ()))
+  (check-equal? (match '(a b a b a b a b)
+                  [(append (and lol (append '(a b) ..2)) ..2)
+                   lol])
+                '((a b a b) (a b a b)))
+  (check-false (match '(a b a b a  b a b)
+                 [(append (and lol (append '(a b) ..2)) ..3)
+                  lol]
+                 [_ #f]))
+  
+  (check-true (match '(a b a b)
+                [(append '(a b) ..2) #t]))
+  (check-false (match '(a b a b)
+                 [(append '(a b) ..3) #t]
+                 [_ #f]))
+  
+  (check-equal? (match '(a b a b a b)
+                  [(append (and lol (or '(a b) '(a b a b))) ..2)
+                   lol])
+                '((a b a b) (a b)))
+  
+  (check-true (match '(1 2 3 . 4)
+                [(append (or '(1) '(2) '(3) 4) ..4) #t]))
   
   )
