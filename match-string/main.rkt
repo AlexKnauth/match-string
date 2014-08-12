@@ -44,30 +44,37 @@
                         (byte-regexp? (attribute rx)))])
   (define-syntax-class ooo
     #:description "elipsis"
-    #:attributes (k)
-    [pattern (~or (~literal ...) (~datum ...)) #:attr k 0]
-    [pattern (~or (~literal ...+) (~datum ...+)) #:attr k 1]
+    #:attributes (k norm)
+    [pattern (~and ooo (~or (~literal ...) (~datum ...)))
+             #:attr k 0
+             #:with norm #'ooo]
+    [pattern (~and ooo (~or (~literal ...+) (~datum ...+)))
+             #:attr k 1
+             #:with norm (datum->syntax #'ooo '..1 #'ooo #'ooo)]
     [pattern ..k:id
              #:do [(define str (~> #'..k syntax-e symbol->string))]
              #:when (and (< 2 (string-length str))
                          (equal? ".." (substring str 0 2)))
              #:attr k (string->number (substring str 2))
-             #:when (exact-nonnegative-integer? (attribute k))])
+             #:when (exact-nonnegative-integer? (attribute k))
+             #:with norm #'..k])
   
   (define-syntax-class pat-maybe-elipsis
     #:attributes (norm)
-    [pattern ooo:ooo
-             #:with norm (match (attribute ooo.k)
-                           [0 (quote-syntax ...)]
-                           [k (format-id #'ooo "..~a" k #:source #'ooo #:props #'ooo)])]
-    [pattern pat:expr
-             #:with norm #'pat])
+    [pattern ooo:ooo #:with norm #'ooo.norm]
+    [pattern pat:expr #:with norm #'pat])
   
   (define-syntax-class str-pat
     #:description "string-append pattern"
     #:attributes (norm)
     [pattern rx:rx #:with norm #'(regexp rx)]
-    [pattern pat:pat-maybe-elipsis #:with norm #'pat.norm])
+    [pattern (~and pat:expr (~not :ooo)) #:with norm #'pat])
+  
+  (define-syntax-class str-pat-maybe-elipsis
+    #:description "string-append pattern"
+    #:attributes (norm)
+    [pattern ooo:ooo #:with norm #'ooo.norm]
+    [pattern pat:str-pat #:with norm #'pat.norm])
   )
 
 (define-match-expander string
@@ -91,6 +98,31 @@
       [(string-append) #'""]
       [(string-append pat:str-pat)
        #'(? string? pat.norm)]
+      [(string-append pat:str-pat ooo:ooo)
+       (with-syntax ([pat #'pat.norm] [ooo #'ooo.norm] [k (attribute ooo.k)])
+         #'(app (lambda (val)
+                  (and (string? val)
+                       (local [;; try : (Listof String) Natural -> (Rec result (U Empty False (Cons String result)))
+                               (define (try lst i)
+                                 (match lst
+                                   [(list)
+                                    (cond [(<= k i) lst]
+                                          [else (match ""
+                                                  [pat (cons "" (try lst (add1 i)))]
+                                                  [_ #false])])]
+                                   [(list "" ..0)
+                                    (try '() i)]
+                                   [(list-rest (and s1 pat) rest)
+                                    (cons s1 (try rest (add1 i)))]
+                                   [(list-rest (string cs ..0 c) s2 rest)
+                                    (try (list* (list->string cs) (rkt:string-append (string c) s2) rest) i)]
+                                   [(list-rest "" rest)
+                                    #false]
+                                   [(list val)
+                                    (try (list val "") i)]
+                                   [_ (error "!!!") #false]))]
+                         (try (list val) 1))))
+                (list pat ooo)))]
       [(string-append pat1:str-pat pat2:str-pat)
        (with-syntax ([pat1 #'pat1.norm] [pat2 #'pat2.norm])
          #'(app (local [;; String String -> (or/c (list String String) #f)
@@ -99,46 +131,48 @@
                         (define (try s1 s2)
                           (match* (s1 s2)
                             [(pat1 pat2) (list s1 s2)]
-                            [(_ "") #false]
-                            [(_ _)
-                             (let* ([s2-first (string-first s2)]
-                                    [s2-rest (string-rest s2)]
-                                    [s1+s2-first (rkt:string-append s1 s2-first)])
-                               (try s1+s2-first s2-rest))]))]
+                            [((string cs ..0 c) s2)
+                             (try (list->string cs) (rkt:string-append (string c) s2))]
+                            [("" _) #false]))]
                   (lambda (val)
                     (and (string? val)
-                         (try "" val))))
+                         (try val ""))))
                 (list pat1 pat2)))]
-      [(string-append pat1:str-pat pat2:str-pat ...)
+      [(string-append pat1:str-pat ooo:ooo pat2:str-pat-maybe-elipsis ...)
+       #'(string-append (string-append pat1.norm ooo.norm) pat2.norm ...)]
+      [(string-append pat1:str-pat pat2:str-pat-maybe-elipsis ...)
        #'(string-append pat1.norm (string-append pat2.norm ...))]
       ))
   (lambda (stx) ; as normal string-append
     (syntax-parse stx
-                  [(string-append s ...) #'(#%app rkt:string-append s ...)]
-                  [string-append #'rkt:string-append])))
+                  [(string-append . rest)
+                   (quasisyntax/loc stx
+                     (#,(syntax/loc #'string-append rkt:string-append) . rest))]
+                  [string-append
+                   (syntax/loc stx rkt:string-append)])))
 
 (define-match-expander append
   (lambda (stx) ; as a pattern
     (syntax-parse stx
-                  [(append) #''()]
-                  [(append pat) #'pat]
-                  [(append pat1 pat2)
-                   #'(app (local [;; List Any -> (or/c (list List Any) #f)
-                                  ;; matches p1 and p2 against pat1 and pat2, and
-                                  ;; if the match fails, then it tries again with slightly different lists
-                                  (define (try p1 p2)
-                                    (match* (p1 p2)
-                                      [(pat1 pat2) (list p1 p2)]
-                                      [(p1 (cons p2-first p2-rest))
-                                       (let ([p1+p2-first (append p1 (list p2-first))])
-                                         (try p1+p2-first p2-rest))]
-                                      [(_ _) #false]))]
-                            (lambda (val)
-                              (try '() val)))
-                          (list pat1 pat2))]
-                  [(append pat1 pat2 ...)
-                   #'(append pat1 (append pat2 ...))]
-                  ))
+      [(append) #''()]
+      [(append pat) #'pat]
+      [(append pat1 pat2)
+       #'(app (local [;; List Any -> (or/c (list List Any) #f)
+                      ;; matches p1 and p2 against pat1 and pat2, and
+                      ;; if the match fails, then it tries again with slightly different lists
+                      (define (try p1 p2)
+                        (match* (p1 p2)
+                          [(pat1 pat2) (list p1 p2)]
+                          [(p1 (cons p2-first p2-rest))
+                           (let ([p1+p2-first (append p1 (list p2-first))])
+                             (try p1+p2-first p2-rest))]
+                          [(_ _) #false]))]
+                (lambda (val)
+                  (try '() val)))
+              (list pat1 pat2))]
+      [(append pat1 pat2 ...)
+       #'(append pat1 (append pat2 ...))]
+      ))
   (lambda (stx) ; as normal append
     (syntax-parse stx
                   [(append p ...) #'(#%app rkt:append p ...)]
@@ -264,10 +298,28 @@
   
   ;; Examples based on examples in racket guide for regexps
   
+  (define-syntax-rule
+    (my-string-match-positions pat str)
+    (match str
+      [(string-append (app string-length start-pos)
+                      (and pat s (app string-length s.length))
+                      _)
+       (define end-pos (+ start-pos s.length))
+       (list (cons start-pos end-pos))]
+      [_ #f]))
+  
+  (define-syntax-rule
+    (my-string-match pat str)
+    (match str
+      [(string-append _ (and pat s) _)
+       (list s)]
+      [_ #f]))
+  
   ;; instead of:
   ;; > (regexp-match-positions #rx"brain" "bird")
   ;; #f
-  (check-equal? (match "bird"
+  (check-equal? (my-string-match-positions "brain" "bird")
+                #;(match "bird"
                   [(string-append (app string-length a) "brain" _)
                    (list (cons a (+ a (string-length "brain"))))]
                   [_ #f])
@@ -276,7 +328,8 @@
   ;; instead of:
   ;; > (regexp-match-positions #rx"needle" "hay needle stack")
   ;; '((4 . 10))
-  (check-equal? (match "hay needle stack"
+  (check-equal? (my-string-match-positions "needle" "hay needle stack")
+                #;(match "hay needle stack"
                   [(string-append (app string-length a) "needle" _)
                    (list (cons a (+ a (string-length "needle"))))])
                 '((4 . 10)))
@@ -301,8 +354,8 @@
   ;; > (regexp-match-positions #rx"^contact" "first contact")
   ;; #f
   (check-equal? (match "first contact"
-                  [(string-append "contact" _)
-                   (list (cons 0 (+ 0 (string-length "contact"))))]
+                  [(string-append (and s "contact") _)
+                   (list (cons 0 (string-length s)))]
                   [_ #f])
                 #f)
   
@@ -310,8 +363,8 @@
   ;; > (regexp-match-positions #rx"laugh$" "laugh laugh laugh laugh")
   ;; '((18 . 23))
   (check-equal? (match "laugh laugh laugh laugh"
-                  [(string-append (app string-length a) "laugh")
-                   (list (cons a (+ a (string-length "laugh"))))])
+                  [(string-append (app string-length a) (and s "laugh"))
+                   (list (cons a (+ a (string-length s))))])
                 '((18 . 23)))
   
   ;; instead of:
@@ -366,6 +419,10 @@
   ;; > (regexp-match-positions #rx"c[ad]*r" "cadaddadddr")
   ;; '((0 . 11))
   (check-equal? (match "cadaddadddr"
+                  [(string-append (app string-length a) (and s (string-append "c" (or "a" "d") ... "r")) _)
+                   (list (cons a (+ a (string-length s))))])
+                '((0 . 11)))
+  (check-equal? (match "cadaddadddr"
                   [(string-append (app string-length a) (and (string #\c (or #\a #\d) ... #\r) s) _)
                    (list (cons a (+ a (string-length s))))])
                 '((0 . 11)))
@@ -373,6 +430,10 @@
   ;; instead of:
   ;; > (regexp-match-positions #rx"c[ad]*r" "cr")
   ;; '((0 . 2))
+  (check-equal? (match "cr"
+                  [(string-append (app string-length a) (and (string-append "c" (or "a" "d") ... "r") s) _)
+                   (list (cons a (+ a (string-length s))))])
+                '((0 . 2)))
   (check-equal? (match "cr"
                   [(string-append (app string-length a) (and (string #\c (or #\a #\d) ... #\r) s) _)
                    (list (cons a (+ a (string-length s))))])
@@ -382,7 +443,11 @@
   ;; > (regexp-match-positions #rx"c[ad]+r" "cadaddadddr")
   ;; '((0 . 11))
   (check-equal? (match "cadaddadddr"
-                  [(string-append (app string-length a) (and (string #\c (or #\a #\d) ..1 #\r) s) _)
+                  [(string-append (app string-length a) (and (string-append "c" (or "a" "d") ...+ "r") s) _)
+                   (list (cons a (+ a (string-length s))))])
+                '((0 . 11)))
+  (check-equal? (match "cadaddadddr"
+                  [(string-append (app string-length a) (and (string #\c (or #\a #\d) ...+ #\r) s) _)
                    (list (cons a (+ a (string-length s))))])
                 '((0 . 11)))
   
@@ -390,7 +455,12 @@
   ;; > (regexp-match-positions #rx"c[ad]+r" "cr")
   ;; #f
   (check-equal? (match "cr"
-                  [(string-append (app string-length a) (and (string #\c (or #\a #\d) ..1 #\r) s) _)
+                  [(string-append (app string-length a) (and (string-append "c" (or "a" "d") ...+ "r") s) _)
+                   (list (cons a (+ a (string-length s))))]
+                  [_ #f])
+                #f)
+  (check-equal? (match "cr"
+                  [(string-append (app string-length a) (and (string #\c (or #\a #\d) ...+ #\r) s) _)
                    (list (cons a (+ a (string-length s))))]
                   [_ #f])
                 #f)
