@@ -102,32 +102,32 @@
        #'(? string? pat.norm)]
       [(string-append pat:str-pat ooo:ooo)
        (with-syntax ([pat #'pat.norm] [ooo #'ooo.norm] [k (attribute ooo.k)])
-         #'(app (lambda (val)
-                  (and (string? val)
-                       (local [;; try : (Listof String) Natural -> (U (Listof String) #f)
-                               (define (try lst i)
-                                 (match lst
-                                   [(list)
-                                    (cond [(<= k i) '()]
-                                          [else (match ""
-                                                  [pat
-                                                   (if-let [it (try '() (add1 i))]
-                                                           (cons "" it)
-                                                           #false)]
-                                                  [_ #false])])]
-                                   [(list "" ..0)
-                                    (try '() i)]
-                                   [(list-rest (and s1 pat) rest)
-                                    (if-let [it (try rest (add1 i))]
-                                            (cons s1 it)
-                                            (failure-cont))]
-                                   [(list-rest (string cs ..0 c) s2 rest)
-                                    (try (list* (list->string cs) (rkt:string-append (string c) s2) rest) i)]
-                                   [(list-rest "" rest)
-                                    #false]
-                                   [(list val)
-                                    (try (list val "") i)]
-                                   [_ (error "!!!") #false]))]
+         #'(app (local [;; try : (Listof String) Natural -> (U (Listof String) #f)
+                        (define (try lst i)
+                          (match lst
+                            [(list)
+                             (cond [(<= k i) '()]
+                                   [else (match ""
+                                           [pat
+                                            (if-let [it (try '() (add1 i))]
+                                                    (cons "" it)
+                                                    #false)]
+                                           [_ #false])])]
+                            [(list "" ..0)
+                             (try '() i)]
+                            [(list-rest (and s1 pat) rest)
+                             (if-let [it (try rest (add1 i))]
+                                     (cons s1 it)
+                                     (failure-cont))]
+                            [(list-rest (string cs ..0 c) s2 rest)
+                             (try (list* (list->string cs) (rkt:string-append (string c) s2) rest) i)]
+                            [(list-rest "" rest)
+                             #false]
+                            [(list val)
+                             (try (list val "") i)]
+                            [_ (error "!!!") #false]))]
+                  (lambda (val)
+                    (and (string? val)
                          (try (list val) 0))))
                 (list pat ooo)))]
       [(string-append pat1:str-pat pat2:str-pat)
