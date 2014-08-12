@@ -152,11 +152,11 @@
       ))
   (lambda (stx) ; as normal string-append
     (syntax-parse stx
-                  [(string-append . rest)
-                   (quasisyntax/loc stx
-                     (#,(syntax/loc #'string-append rkt:string-append) . rest))]
-                  [string-append
-                   (syntax/loc stx rkt:string-append)])))
+      [(string-append . rest)
+       (quasisyntax/loc stx
+         (#,(syntax/loc #'string-append rkt:string-append) . rest))]
+      [string-append
+       (syntax/loc stx rkt:string-append)])))
 
 (define-match-expander append
   (lambda (stx) ; as a pattern
@@ -214,39 +214,39 @@
       ))
   (lambda (stx) ; as normal append
     (syntax-parse stx
-                  [(append p ...) #'(#%app rkt:append p ...)]
-                  [append #'rkt:append])))
+      [(append . rst)
+       (quasisyntax/loc stx (#,(syntax/loc #'append rkt:append) . rst))]
+      [append
+       (syntax/loc stx rkt:append)])))
 
 
 
 
 (define/contract append/c (case-> (#:rest (listof flat-contract?) . -> . flat-contract?))
-  (procedure-rename
-   (case-lambda
-     [() (flat-named-contract 'empty? empty?)]
-     [(c) (flat-named-contract (contract-name c) c)]
-     [(c1 c2)
-      (let ([c1? (flat-named-contract (contract-name c1) c1)]
-            [c2? (flat-named-contract (contract-name c2) c2)])
-        (flat-named-contract
-         `(append/c ,(contract-name c1) ,(contract-name c2))
-         (lambda (p)
-           (local [(define (try p1 p2)
-                     (cond [(and (c1? p1)
-                                 (c2? p2))
-                            #true]
-                           [(not (pair? p2)) #false]
-                           [else
-                            (let* ([p2-first (car p2)]
-                                   [p2-rest (cdr p2)]
-                                   [p1+p2-first (append p1 (list p2-first))])
-                              (try p1+p2-first p2-rest))]))]
-             (try '() p)))))]
-     [(c1 . rest-args)
-      (flat-named-contract
-       `(append/c ,(contract-name c1) ,@(map contract-name rest-args))
-       (append/c c1 (apply append/c rest-args)))])
-   'append/c))
+  (case-lambda
+    [() (flat-named-contract 'empty? empty?)]
+    [(c) (flat-named-contract (contract-name c) c)]
+    [(c1 c2)
+     (let ([c1? (flat-named-contract (contract-name c1) c1)]
+           [c2? (flat-named-contract (contract-name c2) c2)])
+       (flat-named-contract
+        `(append/c ,(contract-name c1) ,(contract-name c2))
+        (lambda (p)
+          (local [(define (try p1 p2)
+                    (cond [(and (c1? p1)
+                                (c2? p2))
+                           #true]
+                          [(not (pair? p2)) #false]
+                          [else
+                           (let* ([p2-first (car p2)]
+                                  [p2-rest (cdr p2)]
+                                  [p1+p2-first (append p1 (list p2-first))])
+                             (try p1+p2-first p2-rest))]))]
+            (try '() p)))))]
+    [(c1 . rest-args)
+     (flat-named-contract
+      `(append/c ,(contract-name c1) ,@(map contract-name rest-args))
+      (append/c c1 (apply append/c rest-args)))]))
 
 (define/contract string-append/c (case-> (#:rest (listof flat-contract?) . -> . flat-contract?))
   (case-lambda
