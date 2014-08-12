@@ -227,22 +227,22 @@
     [() (flat-named-contract 'empty? empty?)]
     [(c) (flat-named-contract (contract-name c) c)]
     [(c1 c2)
-     (let ([c1? (flat-named-contract (contract-name c1) c1)]
-           [c2? (flat-named-contract (contract-name c2) c2)])
+     (let ([c1.name (contract-name c1)]
+           [c2.name (contract-name c2)])
        (flat-named-contract
-        `(append/c ,(contract-name c1) ,(contract-name c2))
-        (lambda (p)
-          (local [(define (try p1 p2)
-                    (cond [(and (c1? p1)
-                                (c2? p2))
-                           #true]
-                          [(not (pair? p2)) #false]
-                          [else
-                           (let* ([p2-first (car p2)]
-                                  [p2-rest (cdr p2)]
-                                  [p1+p2-first (append p1 (list p2-first))])
-                             (try p1+p2-first p2-rest))]))]
-            (try '() p)))))]
+        `(append/c ,c1.name ,c2.name)
+        (local [(define c1? (flat-named-contract c1.name c1))
+                (define c2? (flat-named-contract c2.name c2))
+                (define (try p1 p2)
+                  (match p1
+                    [_ #:when (and (c1? p1) (c2? p2)) #true]
+                    [(list lst1 ..0 last)
+                     (try lst1 (cons last p2))]
+                    ['() #false]))]
+          (lambda (val)
+            (match val
+              [(list-rest lst1 ..0 (and rst (not (? pair?))))
+               (try lst1 rst)])))))]
     [(c1 . rest-args)
      (flat-named-contract
       `(append/c ,(contract-name c1) ,@(map contract-name rest-args))
@@ -253,23 +253,21 @@
     [() (flat-named-contract "" "")]
     [(c) (flat-named-contract `(string-append-c ,(contract-name c)) (and/c string? c))]
     [(c1 c2)
-     (let ([c1? (flat-named-contract (contract-name c1) c1)]
-           [c2? (flat-named-contract (contract-name c2) c2)])
+     (let ([c1.name (contract-name c1)]
+           [c2.name (contract-name c2)])
        (flat-named-contract
-        `(string-append/c ,(contract-name c1) ,(contract-name c2))
-        (lambda (s)
-          (and (string? s)
-               (local [(define (try s1 s2)
-                         (cond [(and (c1? s1)
-                                     (c2? s2))
-                                #true]
-                               [(equal? "" s2) #false]
-                               [else
-                                (let* ([s2-first (string-first s2)]
-                                       [s2-rest (string-rest s2)]
-                                       [s1+s2-first (string-append s1 s2-first)])
-                                  (try s1+s2-first s2-rest))]))]
-                 (try "" s))))))]
+        `(string-append/c ,c1.name ,c2.name)
+        (local [(define c1? (flat-named-contract c1.name c1))
+                (define c2? (flat-named-contract c2.name c2))
+                (define (try s1 s2)
+                  (match s1
+                    [_ #:when (and (c1? s1) (c2? s2)) #true]
+                    [(string cs ... c)
+                     (try (list->string cs) (string-append (string c) s2))]
+                    ["" #false]))]
+          (lambda (s)
+            (and (string? s)
+                 (try s ""))))))]
     [(c1 . rest-args)
      (flat-named-contract
       `(string-append/c ,(contract-name c1) ,@(map contract-name rest-args))
