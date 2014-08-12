@@ -2,6 +2,7 @@
 
 (provide append
          string-append
+         string
          append/c
          string-append/c
          )
