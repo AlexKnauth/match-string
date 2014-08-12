@@ -84,6 +84,22 @@
     [pattern pat:str-pat #:with norm #'pat.norm])
   )
 
+(define (ooo? sym)
+  (match sym
+    ['... 0]
+    ['...+ 1]
+    [(? symbol? (app symbol->string str))
+     #:when (and (< 2 (string-length str))
+                 (equal? ".." (substring str 0 2)))
+     (define k (string->number (substring str 2)))
+     (cond [(exact-nonnegative-integer? k) k]
+           [else #f])]
+    [_ #f]))
+(define (ooo-k sym)
+  (or (ooo? sym) (error 'ooo-k "expects ooo?, given: ~v" sym)))
+
+
+
 (define-match-expander string
   (lambda (stx) ; as a match pattern
     (syntax-parse stx
@@ -232,47 +248,108 @@
     [() (flat-named-contract 'empty? empty?)]
     [(c) (flat-named-contract (contract-name c) c)]
     [(c1 c2)
-     (let ([c1.name (contract-name c1)]
-           [c2.name (contract-name c2)])
-       (flat-named-contract
-        `(append/c ,c1.name ,c2.name)
-        (local [(define c1? (flat-named-contract c1.name c1))
-                (define c2? (flat-named-contract c2.name c2))
-                (define (try p1 p2)
-                  (match p1
-                    [_ #:when (and (c1? p1) (c2? p2)) #true]
-                    [(list lst1 ..0 last)
-                     (try lst1 (cons last p2))]
-                    ['() #false]))]
-          (lambda (val)
-            (match val
-              [(list-rest lst1 ..0 (and rst (not (? pair?))))
-               (try lst1 rst)])))))]
-    [(c1 . rest-args)
-     (flat-named-contract
-      `(append/c ,(contract-name c1) ,@(map contract-name rest-args))
-      (append/c c1 (apply append/c rest-args)))]))
+     (define ooo?/k (ooo? c2))
+     (cond [ooo?/k
+            (let ([c c1] [ooo c1] [c.name (contract-name c1)])
+              (flat-named-contract
+               `(append/c ,c.name ,ooo)
+               (local [(define k ooo?/k)
+                       (define c? (flat-named-contract c.name c))
+                       (define (try lst i)
+                         (match lst
+                           [(list)
+                            (cond [(<= k i) #true]
+                                  [(c? '()) #true]
+                                  [else #false])]
+                           [(list '() ..0)
+                            (try '() i)]
+                           [(list-rest (and lst1 (? c?)) rest)
+                            (or (try rest (add1 i))
+                                (failure-cont))]
+                           [(list-rest (list lst1 ..0 last) lst2 rest)
+                            (try (list* lst1 (cons last lst2) rest) i)]
+                           [(list-rest '() rest)
+                            #false]
+                           [(list (list-rest lst1 ..0 (and rst (not (? pair?)))))
+                            (try (list lst1 rst) i)]
+                           [_ (error 'append/c "!!! lst = ~v" lst) #false]))]
+                 (lambda (val)
+                   (try (list val) 0)))))]
+           [else
+            (let ([c1.name (contract-name c1)]
+                  [c2.name (contract-name c2)])
+              (flat-named-contract
+               `(append/c ,c1.name ,c2.name)
+               (local [(define c1? (flat-named-contract c1.name c1))
+                       (define c2? (flat-named-contract c2.name c2))
+                       (define (try p1 p2)
+                         (match p1
+                           [_ #:when (and (c1? p1) (c2? p2)) #true]
+                           [(list lst1 ..0 last)
+                            (try lst1 (cons last p2))]
+                           ['() #false]))]
+                 (lambda (val)
+                   (match val
+                     [(list-rest lst1 ..0 (and rst (not (? pair?))))
+                      (try lst1 rst)])))))])]
+    [(c1 c2 . rest-args)
+     (cond [(ooo? c2)
+            (flat-named-contract
+             `(append/c ,(contract-name c1) ,c2 ,@(map contract-name rest-args))
+             (apply append/c (append/c c1 c2) rest-args))]
+           [else
+            (flat-named-contract
+             `(append/c ,(contract-name c1) ,(contract-name c2) ,@(map contract-name rest-args))
+             (append/c c1 (apply append/c c2 rest-args)))])]))
 
 (define/contract string-append/c (case-> (#:rest (listof flat-contract?) . -> . flat-contract?))
   (case-lambda
     [() (flat-named-contract "" "")]
     [(c) (flat-named-contract `(string-append-c ,(contract-name c)) (and/c string? c))]
     [(c1 c2)
-     (let ([c1.name (contract-name c1)]
-           [c2.name (contract-name c2)])
-       (flat-named-contract
-        `(string-append/c ,c1.name ,c2.name)
-        (local [(define c1? (flat-named-contract c1.name c1))
-                (define c2? (flat-named-contract c2.name c2))
-                (define (try s1 s2)
-                  (match s1
-                    [_ #:when (and (c1? s1) (c2? s2)) #true]
-                    [(string cs ... c)
-                     (try (list->string cs) (string-append (string c) s2))]
-                    ["" #false]))]
-          (lambda (s)
-            (and (string? s)
-                 (try s ""))))))]
+     (define ooo?/k (ooo? c2))
+     (cond [ooo?/k
+            (let ([c c1] [ooo c1] [c.name (contract-name c1)])
+              (flat-named-contract
+               `(string-append/c ,c.name ,ooo)
+               (local [(define k ooo?/k)
+                       (define c? (flat-named-contract c.name c))
+                       (define (try lst i)
+                         (match lst
+                           [(list)
+                            (cond [(<= k i) #true]
+                                  [(c? "") #true]
+                                  [else #false])]
+                           [(list "" ..0)
+                            (try '() i)]
+                           [(list-rest (and lst1 (? c?)) rest)
+                            (or (try rest (add1 i))
+                                (failure-cont))]
+                           [(list-rest (string cs ..0 c) s2 rest)
+                            (try (list* (list->string cs) (string-append (string c) s2) rest) i)]
+                           [(list-rest "" rest)
+                            #false]
+                           [(list s)
+                            (try (list s "") i)]
+                           [_ (error 'string-append/c "!!! lst = ~v" lst) #false]))]
+                 (lambda (val)
+                   (try (list val) 0)))))]
+           [else
+            (let ([c1.name (contract-name c1)]
+                  [c2.name (contract-name c2)])
+              (flat-named-contract
+               `(string-append/c ,c1.name ,c2.name)
+               (local [(define c1? (flat-named-contract c1.name c1))
+                       (define c2? (flat-named-contract c2.name c2))
+                       (define (try s1 s2)
+                         (match s1
+                           [_ #:when (and (c1? s1) (c2? s2)) #true]
+                           [(string cs ... c)
+                            (try (list->string cs) (string-append (string c) s2))]
+                           ["" #false]))]
+                 (lambda (s)
+                   (and (string? s)
+                        (try s ""))))))])]
     [(c1 . rest-args)
      (flat-named-contract
       `(string-append/c ,(contract-name c1) ,@(map contract-name rest-args))
@@ -283,29 +360,29 @@
 
 (module+ test
   
-  (check-true (#%app (append/c (list/c 1 2 3) list?)
-                     (list 1 2 3 4 5 6)))
+  (check-pred (append/c (list/c 1 2 3) list?)
+              (list 1 2 3 4 5 6))
   
-  (check-true (#%app (append/c (list/c 1 2 3) 4)
-                     '(1 2 3 . 4)))
+  (check-pred (append/c (list/c 1 2 3) 4)
+              '(1 2 3 . 4))
   
-  (check-false (#%app (append/c (list/c 1 2 2.5 3) list?)
-                      (list 1 2 3 4 5 6)))
+  (check-pred (not/c (append/c (list/c 1 2 2.5 3) list?))
+              (list 1 2 3 4 5 6))
   
-  (check-true (#%app (string-append/c "abc" string?)
-                     "abcdef"))
+  (check-pred (string-append/c "abc" string?)
+              "abcdef")
   
-  (check-false (#%app (string-append/c "abc" string?)
-                      "ab cdef"))
+  (check-pred (not/c (string-append/c "abc" string?))
+              "ab cdef")
   
-  (check-true (#%app (string-append/c (or/c "abc" "ab c") string?)
-                     "ab cdef"))
+  (check-pred (string-append/c (or/c "abc" "ab c") string?)
+              "ab cdef")
   
   (local [(define ws? string-whitespace?)
           (define abc?
             (string-append/c "a" ws? "b" ws? "c"))]
-    (check-true (#%app (string-append/c abc? string?)
-                       "a    b c   stuff")))
+    (check-pred (string-append/c abc? string?)
+                "a    b c   stuff"))
   
   (check-equal? (match (list 1 2 3 4 5 6)
                   [(append (list 1 2 3) p) p])
@@ -520,16 +597,22 @@
                   [(string-append (and los (or "ab" "abab")) ..3)
                    los])
                 '("abab" "ab" "ab"))
+  (check-pred (string-append/c (or/c "ab" "abab") '..3)
+              "abababab")
   
   (check-equal? (match "abab"
                   [(string-append (and los (or "ab" "abab")) ..2)
                    los])
                 '("ab" "ab"))
+  (check-pred (string-append/c (or/c "ab" "abab") '..2)
+              "abab")
   
   (check-equal? (match "abababab"
                   [(string-append (and los (string-append "ab" ...+)) ..3)
                    los])
                 '("abab" "ab" "ab"))
+  (check-pred (string-append/c (string-append/c "ab" '...+) '..3)
+              "ababab")
   (check-equal? (match "abababab"
                   [(string-append (and los (string-append "ab" ...)) ..3)
                    los])
@@ -538,26 +621,36 @@
                   [(string-append (and los (string-append "ab" ..2)) ..2)
                    los])
                 '("abab" "abab"))
+  (check-pred (string-append/c (string-append/c "ab" '..2) '..2)
+              "abababab")
   (check-false (match "abababab"
                  [(string-append (and los (string-append "ab" ..2)) ..3)
                   los]
                  [_ #f]))
+  (check-pred (not/c (string-append/c (string-append/c "ab" '..2) '..3))
+              "abababab")
   
   (check-true (match "abab"
                 [(string-append "ab" ..2) #t]))
   (check-false (match "abab"
                  [(string-append "ab" ..3) #t]
                  [_ #f]))
+  (check-pred (string-append/c "ab" '..2) "abab")
+  (check-pred (not/c (string-append/c "ab" '..3)) "abab")
   
   (check-equal? (match '(a b a b a b a b)
                   [(append (and lol (or '(a b) '(a b a b))) ..3)
                    lol])
                 '((a b a b) (a b) (a b)))
+  (check-pred (append/c (or/c (list/c 'a 'b) (list/c 'a 'b 'a 'b)) '..3)
+              '(a b a b a b a b))
   
   (check-equal? (match '(a b a b)
                   [(append (and lol (or '(a b) '(a b a b))) ..2)
                    lol])
                 '((a b) (a b)))
+  (check-pred (append/c (or/c (list/c 'a 'b) (list/c 'a 'b 'a 'b)) '..2)
+              '(a b a b a b))
   
   (check-equal? (match '(a b a b a b a b)
                   [(append (and lol (append '(a b) ...+)) ..3)
@@ -581,6 +674,8 @@
   (check-false (match '(a b a b)
                  [(append '(a b) ..3) #t]
                  [_ #f]))
+  (check-pred (append/c (list/c 'a 'b) '..2) '(a b a b))
+  (check-pred (not/c (append/c (list/c 'a 'b) '..3)) '(a b a b))
   
   (check-equal? (match '(a b a b a b)
                   [(append (and lol (or '(a b) '(a b a b))) ..2)
@@ -589,5 +684,6 @@
   
   (check-true (match '(1 2 3 . 4)
                 [(append (or '(1) '(2) '(3) 4) ..4) #t]))
+  (check-pred (append/c (or/c (list/c (or/c 1 2 3)) 4) '..4) '(1 2 3 . 4))
   
   )
