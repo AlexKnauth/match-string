@@ -11,6 +11,7 @@
          racket/match
          racket/contract/base
          racket/contract/region
+         rackjure/conditionals
          (only-in racket/base
                   [append rkt:append]
                   [string rkt:string]
@@ -102,18 +103,23 @@
        (with-syntax ([pat #'pat.norm] [ooo #'ooo.norm] [k (attribute ooo.k)])
          #'(app (lambda (val)
                   (and (string? val)
-                       (local [;; try : (Listof String) Natural -> (Rec result (U Empty False (Cons String result)))
+                       (local [;; try : (Listof String) Natural -> (U (Listof String) #f)
                                (define (try lst i)
                                  (match lst
                                    [(list)
-                                    (cond [(<= k i) lst]
+                                    (cond [(<= k i) '()]
                                           [else (match ""
-                                                  [pat (cons "" (try lst (add1 i)))]
+                                                  [pat
+                                                   (if-let [it (try '() (add1 i))]
+                                                           (cons "" it)
+                                                           #false)]
                                                   [_ #false])])]
                                    [(list "" ..0)
                                     (try '() i)]
                                    [(list-rest (and s1 pat) rest)
-                                    (cons s1 (try rest (add1 i)))]
+                                    (if-let [it (try rest (add1 i))]
+                                            (cons s1 it)
+                                            (failure-cont))]
                                    [(list-rest (string cs ..0 c) s2 rest)
                                     (try (list* (list->string cs) (rkt:string-append (string c) s2) rest) i)]
                                    [(list-rest "" rest)
@@ -121,7 +127,7 @@
                                    [(list val)
                                     (try (list val "") i)]
                                    [_ (error "!!!") #false]))]
-                         (try (list val) 1))))
+                         (try (list val) 0))))
                 (list pat ooo)))]
       [(string-append pat1:str-pat pat2:str-pat)
        (with-syntax ([pat1 #'pat1.norm] [pat2 #'pat2.norm])
@@ -473,5 +479,38 @@
                    (list (cons a (+ a (string-length s))))]
                   [_ #f])
                 #f)
+  
+  (check-equal? (match "abababab"
+                  [(string-append (and los (or "ab" "abab")) ..3)
+                   los])
+                '("abab" "ab" "ab"))
+  
+  (check-equal? (match "abab"
+                  [(string-append (and los (or "ab" "abab")) ..2)
+                   los])
+                '("ab" "ab"))
+  
+  (check-equal? (match "abababab"
+                  [(string-append (and los (string-append "ab" ...+)) ..3)
+                   los])
+                '("abab" "ab" "ab"))
+  (check-equal? (match "abababab"
+                  [(string-append (and los (string-append "ab" ...)) ..3)
+                   los])
+                '("abababab" "" ""))
+  (check-equal? (match "abababab"
+                  [(string-append (and los (string-append "ab" ..2)) ..2)
+                   los])
+                '("abab" "abab"))
+  (check-false (match "abababab"
+                 [(string-append (and los (string-append "ab" ..2)) ..3)
+                  los]
+                 [_ #f]))
+  
+  (check-true (match "abab"
+                [(string-append "ab" ..2) #t]))
+  (check-false (match "abab"
+                 [(string-append "ab" ..3) #t]
+                 [_ #f]))
   
   )
