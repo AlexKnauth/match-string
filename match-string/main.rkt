@@ -61,16 +61,21 @@
              #:when (exact-nonnegative-integer? (attribute k))
              #:with norm #'..k])
   
+  (define-syntax-class pat
+    #:description "match pattern"
+    [pattern (~and :expr (~not :ooo))])
+  
   (define-syntax-class pat-maybe-elipsis
+    #:description "match pattern or elipsis"
     #:attributes (norm)
     [pattern ooo:ooo #:with norm #'ooo.norm]
-    [pattern pat:expr #:with norm #'pat])
+    [pattern pat:pat #:with norm #'pat])
   
   (define-syntax-class str-pat
     #:description "string-append pattern"
     #:attributes (norm)
     [pattern rx:rx #:with norm #'(regexp rx)]
-    [pattern (~and pat:expr (~not :ooo)) #:with norm #'pat])
+    [pattern pat:pat #:with norm #'pat])
   
   (define-syntax-class str-pat-maybe-elipsis
     #:description "string-append pattern"
@@ -83,8 +88,8 @@
   (lambda (stx) ; as a match pattern
     (syntax-parse stx
       [(string) #'""]
-      [(string pat:pat-maybe-elipsis ...)
-       #'(? string? (app string->list (list pat.norm ...)))]))
+      [(string pat1:pat pat:pat-maybe-elipsis ...)
+       #'(? string? (app string->list (list pat1 pat.norm ...)))]))
   (lambda (stx) ; as normal string
     (syntax-parse stx
       [(string c ...) #'(rkt:string c ...)]
@@ -162,8 +167,8 @@
   (lambda (stx) ; as a pattern
     (syntax-parse stx
       [(append) #''()]
-      [(append pat) #'pat]
-      [(append pat ooo:ooo)
+      [(append pat:pat) #'pat]
+      [(append pat:pat ooo:ooo)
        (with-syntax ([ooo #'ooo.norm] [k (attribute ooo.k)])
          #'(app (local [;; try : (Listof Any) Natural -> (U (Listof Any) #f)
                         (define (try lst i)
@@ -192,7 +197,7 @@
                   (lambda (val)
                     (try (list val) 0)))
                 (list pat ooo)))]
-      [(append pat1 pat2)
+      [(append pat1:pat pat2:pat)
        #'(app (local [;; List Any -> (or/c (list List Any) #f)
                       ;; matches p1 and p2 against pat1 and pat2, and
                       ;; if the match fails, then it tries again with slightly different lists
@@ -207,10 +212,10 @@
                     [(list-rest lst1 ..0 (and rst (not (? pair?))))
                      (try lst1 rst)])))
               (list pat1 pat2))]
-      [(append pat1:expr ooo:ooo pat2:pat-maybe-elipsis ...)
+      [(append pat1:pat ooo:ooo pat2:pat-maybe-elipsis ...)
        #'(append (append pat1 ooo.norm) pat2.norm ...)]
-      [(append pat1 pat2 ...)
-       #'(append pat1 (append pat2 ...))]
+      [(append pat1:pat pat2:pat pat:pat-maybe-elipsis ...)
+       #'(append pat1 (append pat2 pat ...))]
       ))
   (lambda (stx) ; as normal append
     (syntax-parse stx
