@@ -5,6 +5,7 @@
          string
          append/c
          string-append/c
+         string/c
          )
 
 (require racket/list
@@ -111,7 +112,9 @@
       [(string c ...) #'(rkt:string c ...)]
       [string #'rkt:string])))
 
-
+(define (string/c . args)
+  (lambda (s)
+    ((apply list/c args) (string->list s))))
 
 
 
@@ -608,9 +611,9 @@
               "abab")
   
   (check-equal? (match "abababab"
-                  [(string-append (and los (string-append "ab" ...+)) ..3)
-                   los])
-                '("abab" "ab" "ab"))
+                  [(string-append (and los (string-append (and lol "ab") ...+)) ..3)
+                   (list los lol)])
+                '(("abab" "ab" "ab") (("ab" "ab") ("ab") ("ab"))))
   (check-pred (string-append/c (string-append/c "ab" '...+) '..3)
               "ababab")
   (check-equal? (match "abababab"
@@ -653,9 +656,10 @@
               '(a b a b a b))
   
   (check-equal? (match '(a b a b a b a b)
-                  [(append (and lol (append '(a b) ...+)) ..3)
-                   lol])
-                '((a b a b) (a b) (a b)))
+                  [(append (and lol (append (and lolol '(a b)) ...+)) ..3)
+                   (list lol lolol)])
+                '(((a b a b) (a b) (a b))
+                  (((a b) (a b)) ((a b)) ((a b)))))
   (check-equal? (match '(a b a b a b a b)
                   [(append (and lol (append '(a b) ...)) ..3)
                    lol])
