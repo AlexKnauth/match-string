@@ -15,6 +15,8 @@
                                        [string rkt:string])
                             match-string)))
 
+@title{match-string}
+
 @defmodule[match-string]{
 provides @racket[string-append], @racket[append], and @racket[string] as @racket[match] expanders,
 and @racket[string-append/c], @racket[append/c], and @racket[string/c] as contract constructers.
