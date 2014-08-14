@@ -3,6 +3,8 @@ match-string
 
 string-append and append as a match patterns
 
+[![Build Status](https://travis-ci.org/AlexKnauth/match-string.png?branch=master)](https://travis-ci.org/AlexKnauth/match-string)
+
 Examples:
 ```racket
 > string-append
