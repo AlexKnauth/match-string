@@ -99,7 +99,7 @@ When it's not used as a @racket[match] expander, it behaves like normal @racket[
 
 }
 
-@defproc[(string/c [arg flat-contract?] ...) flat-contract?]{
+@defproc[(string/c [arg (or/c flat-contract? '... '...+ ..k?)] ...) flat-contract?]{
 
 }
 

@@ -113,8 +113,26 @@
       [string #'rkt:string])))
 
 (define (string/c . args)
-  (lambda (s)
-    ((apply list/c args) (string->list s))))
+  (flat-named-contract
+   `(string/c ,@(for/list ([arg (in-list args)]) (if (ooo? arg) arg (contract-name arg))))
+   (local [(define (try s-lst args)
+             (match args
+               [(list) (empty? s-lst)]
+               [(list-rest c (app ooo? (and k (not #f))) rest-args)
+                (define c? (flat-contract-predicate c))
+                (match s-lst
+                  [(list-rest (? c? cs) ... rest-cs)
+                   #:when (<= k (length cs))
+                   (try rest-cs rest-args)]
+                  [_ #f])]
+               [(list-rest c rest-args)
+                (define c? (flat-contract-predicate c))
+                (match s-lst
+                  [(list-rest (? c?) rest-cs)
+                   (try rest-cs rest-args)]
+                  [_ #f])]))]
+     (lambda (s)
+       (try (string->list s) args)))))
 
 
 
@@ -689,5 +707,8 @@
   (check-true (match '(1 2 3 . 4)
                 [(append (or '(1) '(2) '(3) 4) ..4) #t]))
   (check-pred (append/c (or/c (list/c (or/c 1 2 3)) 4) '..4) '(1 2 3 . 4))
+  
+  (check-pred (string/c char-upper-case? '..3) "ABC")
+  (check-pred (not/c (string/c char-upper-case? '..3)) "ABc")
   
   )
