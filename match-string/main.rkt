@@ -18,11 +18,11 @@
                   [append rkt:append]
                   [string rkt:string]
                   [string-append rkt:string-append])
+         "ooo.rkt"
          (for-syntax racket/base
                      syntax/parse
-                     racket/syntax
-                     racket/match
-                     rackjure/threading))
+                     "syntax-classes.rkt"
+                     ))
 
 (module+ test
   (require rackunit
@@ -38,74 +38,12 @@
 
 
 
-(begin-for-syntax
-  (define-syntax-class rx
-    #:description "regexp literal"
-    [pattern pat
-             #:attr rx (syntax-e #'pat)
-             #:when (or (regexp? (attribute rx))
-                        (byte-regexp? (attribute rx)))])
-  (define-syntax-class ooo
-    #:description "elipsis"
-    #:attributes (k norm)
-    [pattern (~and ooo (~or (~literal ...) (~datum ...)))
-             #:attr k 0
-             #:with norm #'ooo]
-    [pattern (~and ooo (~or (~literal ...+) (~datum ...+)))
-             #:attr k 1
-             #:with norm (datum->syntax #'ooo '..1 #'ooo #'ooo)]
-    [pattern ..k:id
-             #:do [(define str (~> #'..k syntax-e symbol->string))]
-             #:when (and (< 2 (string-length str))
-                         (equal? ".." (substring str 0 2)))
-             #:attr k (string->number (substring str 2))
-             #:when (exact-nonnegative-integer? (attribute k))
-             #:with norm #'..k])
-  
-  (define-syntax-class pat
-    #:description "match pattern"
-    [pattern (~and :expr (~not :ooo))])
-  
-  (define-syntax-class pat-maybe-elipsis
-    #:description "match pattern or elipsis"
-    #:attributes (norm)
-    [pattern ooo:ooo #:with norm #'ooo.norm]
-    [pattern pat:pat #:with norm #'pat])
-  
-  (define-syntax-class str-pat
-    #:description "string-append pattern"
-    #:attributes (norm)
-    [pattern rx:rx #:with norm #'(regexp rx)]
-    [pattern pat:pat #:with norm #'pat])
-  
-  (define-syntax-class str-pat-maybe-elipsis
-    #:description "string-append pattern"
-    #:attributes (norm)
-    [pattern ooo:ooo #:with norm #'ooo.norm]
-    [pattern pat:str-pat #:with norm #'pat.norm])
-  )
-
-(define (ooo? sym)
-  (match sym
-    ['... 0]
-    ['...+ 1]
-    [(? symbol? (app symbol->string str))
-     #:when (and (< 2 (string-length str))
-                 (equal? ".." (substring str 0 2)))
-     (define k (string->number (substring str 2)))
-     (cond [(exact-nonnegative-integer? k) k]
-           [else #f])]
-    [_ #f]))
-(define (ooo-k sym)
-  (or (ooo? sym) (error 'ooo-k "expects ooo?, given: ~v" sym)))
-
-
 
 (define-match-expander string
   (lambda (stx) ; as a match pattern
     (syntax-parse stx
       [(string) #'""]
-      [(string pat1:pat pat:pat-maybe-elipsis ...)
+      [(string pat1:pat pat:pat-or-elipsis ...)
        #'(? string? (app string->list (list pat1 pat.norm ...)))]))
   (lambda (stx) ; as normal string
     (syntax-parse stx
@@ -187,9 +125,9 @@
                     (and (string? val)
                          (try val ""))))
                 (list pat1 pat2)))]
-      [(string-append pat1:str-pat ooo:ooo pat2:str-pat-maybe-elipsis ...)
+      [(string-append pat1:str-pat ooo:ooo pat2:str-pat-or-elipsis ...)
        #'(string-append (string-append pat1.norm ooo.norm) pat2.norm ...)]
-      [(string-append pat1:str-pat pat2:str-pat-maybe-elipsis ...)
+      [(string-append pat1:str-pat pat2:str-pat-or-elipsis ...)
        #'(string-append pat1.norm (string-append pat2.norm ...))]
       ))
   (lambda (stx) ; as normal string-append
@@ -249,9 +187,9 @@
                     [(list-rest lst1 ..0 (and rst (not (? pair?))))
                      (try lst1 rst)])))
               (list pat1 pat2))]
-      [(append pat1:pat ooo:ooo pat2:pat-maybe-elipsis ...)
+      [(append pat1:pat ooo:ooo pat2:pat-or-elipsis ...)
        #'(append (append pat1 ooo.norm) pat2.norm ...)]
-      [(append pat1:pat pat2:pat pat:pat-maybe-elipsis ...)
+      [(append pat1:pat pat2:pat pat:pat-or-elipsis ...)
        #'(append pat1 (append pat2 pat ...))]
       ))
   (lambda (stx) ; as normal append
