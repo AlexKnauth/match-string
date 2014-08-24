@@ -5,7 +5,9 @@
 (require racket/match
          match-string
          (for-syntax racket/base
-                     syntax/parse))
+                     syntax/parse
+                     "../match-string/syntax-classes.rkt"
+                     ))
 
 (module+ test
   (require rackunit))
@@ -26,14 +28,24 @@
        #'s.spliced-expr]
       [(list/@ . rst:rst)
        #'rst]
-      [(list/@ s:splice expr:expr ...)
-       #'(append s.spliced-expr (list/@ expr ...))]
-      [(list/@ expr0:expr expr:expr ...)
-       #'(cons expr0 (list/@ expr ...))]
-      [(list/@ s:splice expr:expr ... . rst:rst)
-       #'(append s.spliced-expr (list/@ expr ... . rst))]
-      [(list/@ expr0:expr expr:expr ... . rst:rst)
-       #'(cons expr0 (list/@ expr ... . rst))]))
+      [(list/@ pat:pat)
+       #'(list pat)]
+      [(list/@ s:splice ooo:ooo pat:pat-or-elipsis ...)
+       #'(append s.spliced-expr ooo.norm (list/@ pat.norm ...))]
+      [(list/@ pat0:pat ooo:ooo pat:pat-or-elipsis ...)
+       #'(append (list pat0 ooo.norm) (list/@ pat.norm ...))]
+      [(list/@ s:splice pat1:pat pat:pat-or-elipsis ...)
+       #'(append s.spliced-expr (list/@ pat1 pat.norm ...))]
+      [(list/@ pat0:pat pat1:pat pat:pat-or-elipsis ...)
+       #'(cons pat0 (list/@ pat1 pat.norm ...))]
+      [(list/@ s:splice ooo:ooo pat:pat-or-elipsis ... . rst:rst)
+       #'(append s.spliced-expr ooo.norm (list/@ pat.norm ... . rst))]
+      [(list/@ pat0:pat ooo:ooo pat:pat-or-elipsis ... . rst:rst)
+       #'(list-rest pat0 ooo.norm (list/@ pat.norm ... . rst))]
+      [(list/@ s:splice pat1:pat pat:pat-or-elipsis ... . rst:rst)
+       #'(append s.spliced-expr (list/@ pat1 pat.norm ... . rst))]
+      [(list/@ pat0:pat pat1:pat pat:pat-or-elipsis ... . rst:rst)
+       #'(cons pat0 (list/@ pat1 pat.norm ... . rst))]))
   
   (define (parse-list/@-macro stx)
     (syntax-parse stx
