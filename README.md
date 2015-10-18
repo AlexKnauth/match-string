@@ -1,9 +1,6 @@
-match-string
-============
-
+match-string [![Build Status](https://travis-ci.org/AlexKnauth/match-string.png?branch=master)](https://travis-ci.org/AlexKnauth/match-string)
+===
 string-append and append as a match patterns
-
-[![Build Status](https://travis-ci.org/AlexKnauth/match-string.png?branch=master)](https://travis-ci.org/AlexKnauth/match-string)
 
 documentation: http://pkg-build.racket-lang.org/doc/match-string/index.html
 
