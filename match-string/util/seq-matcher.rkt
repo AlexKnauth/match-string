@@ -279,6 +279,37 @@
                             (listof/sp 1 (and/p (pred/p number?) var/p))))
                 [xss])
                (equal? xss (list '(1 2) '(3) '() '(4 5 6))))
+
+  (check-match (list 1 2 ":" 3 4 ":" 5 6 ":" 7 8 ":" 9 10)
+               (list-seq-matcher:
+                (append/sp var/sp
+                           (list/sp (equal/p ":"))
+                           var/sp
+                           (list/sp (equal/p ":"))
+                           var/sp)
+                [xs '(3 4) ys])
+               (and (equal? xs '(1 2))
+                    (equal? ys '(5 6 ":" 7 8 ":" 9 10))))
+  (check-match (list 1 2 ":" 3 4 ":" 5 6 ":" 7 8 ":" 9 10)
+               (list-seq-matcher:
+                (append/sp var/sp
+                           (list/sp (equal/p ":"))
+                           var/sp
+                           (list/sp (equal/p ":"))
+                           var/sp)
+                [xs '(5 6) ys])
+               (and (equal? xs '(1 2 ":" 3 4))
+                    (equal? ys '(7 8 ":" 9 10))))
+  (check-match (list 1 2 ":" 3 4 ":" 5 6 ":" 7 8 ":" 9 10)
+               (list-seq-matcher:
+                (append/sp var/sp
+                           (list/sp (equal/p ":"))
+                           var/sp
+                           (list/sp (equal/p ":"))
+                           var/sp)
+                [xs '(7 8) ys])
+               (and (equal? xs '(1 2 ":" 3 4 ":" 5 6))
+                    (equal? ys '(9 10))))
   )
 
 ;; -----------------------------------------------
