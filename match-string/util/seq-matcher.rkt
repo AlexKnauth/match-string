@@ -1,6 +1,7 @@
 #lang racket/base
 
 (provide seq-matcher->matcher
+         list-seq-matcher:
          ;---
          fail/sp
          empty/sp
@@ -15,7 +16,9 @@
 
 (require racket/list
          racket/match
-         (only-in srfi/1 append-reverse))
+         (only-in srfi/1 append-reverse)
+         (for-syntax racket/base
+                     syntax/parse))
 (module+ test
   (require rackunit
            "matcher.rkt"))
@@ -67,6 +70,32 @@
         (for/or ([c (in-list cs)]
                  #:when (partial? c))
           (loop (partial-rest-matcher c) (partial-rest c))))])))
+
+;;   [SeqMatcher X (Y ...)]
+;;   ->
+;;   [X -> [Listof [List Y ...]]]
+(define ((seq-matcher->possibilities seq/sp) xs)
+  (let loop ([seq/sp seq/sp] [xs xs])
+    (define cs (seq/sp xs))
+    (cond
+      [(empty? cs) '()]
+      [else
+       (append*
+        (for/list ([c (in-list cs)]
+                   #:when (smc-done? c))
+          (complete-values c))
+        (for/list ([c (in-list cs)]
+                   #:when (partial? c))
+          (loop (partial-rest-matcher c) (partial-rest c))))])))
+
+;; (list-seq-matcher: smer [pat ...])
+;;   smer : [SeqMatcher X (Y ...)]
+(define-match-expander list-seq-matcher:
+  (syntax-parser
+    [(_ smer:expr [pat:expr ...])
+     #:with ooo (quote-syntax ...)
+     #'(app (seq-matcher->possibilities smer)
+            (list-rest _ ooo (list pat ...) _))]))
 
 ;; -----------------------------------------------
 
@@ -242,6 +271,14 @@
                                (list/sp (equal/p ":"))
                                (listof/sp 1 (and/p (pred/p number?) var/p))))
                    (list (list '(1 2) '(3) '() '(4 5 6))))
+  (check-match (list ":" 1 2 ":" 3 ":" ":" 4 5 6)
+               (list-seq-matcher:
+                (repeat/sp 1
+                           (append/sp
+                            (list/sp (equal/p ":"))
+                            (listof/sp 1 (and/p (pred/p number?) var/p))))
+                [xss])
+               (equal? xss (list '(1 2) '(3) '() '(4 5 6))))
   )
 
 ;; -----------------------------------------------
