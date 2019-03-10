@@ -11,6 +11,7 @@
          list/sp
          listof/sp
          ;---
+         cons/sp
          append/sp
          )
 
@@ -178,6 +179,29 @@
 
 ;; -----------------------------------------------
 
+;; cons/sp :
+;;   [Matcher X (Y1 ...)]
+;;   [SeqMatcher X (Y2 ...)]
+;;   ->
+;;   [SeqMatcher X (Y1 ... Y2 ...)]
+(define ((cons/sp p sp) xs)
+  (match xs
+    ['() '()]
+    [(cons x xs)
+     (define vs1 (p x))
+     (cond
+       [(not vs1) '()]
+       [else
+        (let loop ([sp sp] [xs xs])
+          (define rs (sp xs))
+          (append*
+           (for/list ([r (in-list rs)])
+             (match r
+               [(complete vs2 xs)
+                (list (complete (append vs1 vs2) xs))]
+               [(partial sp xs)
+                (loop sp xs)]))))])]))
+
 ;; append/sp :
 ;;   [SeqMatcher X (Y ...)] ...
 ;;   ->
@@ -244,6 +268,9 @@
   (check-seq-match (list 1 2 3) var/sp (list (list 1 2 3)))
   (check-seq-match (list 1 2 3) (list/sp var/p (equal/p 2) var/p) (list 1 3))
   (check-seq-match (list 1 2 3) (list/sp var/p (equal/p 2)) #false)
+  (check-seq-match (list 1 2 3 4)
+                   (cons/sp var/p (cons/sp (equal/p 2) var/sp))
+                   (list 1 (list 3 4)))
   (check-seq-match (list 1 2 3) (append/sp var/sp) (list (list 1 2 3)))
   (check-seq-match (list 1 2 3)
                    (append/sp (list/sp var/p) var/sp)
