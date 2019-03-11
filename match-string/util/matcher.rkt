@@ -30,7 +30,7 @@
 ;;   X -> [Maybe [List Y ...]]
 
 (define-simple-macro (matcher pat:expr [id:id ...])
-  (λ (x) (match-lambda [pat (list id ...)] [_ #false])))
+  (match-lambda [pat (list id ...)] [_ #false]))
 
 (define-match-expander matcher:
   (syntax-parser
