@@ -9,7 +9,6 @@
 
 (require syntax/parse
          racket/syntax
-         rackjure/threading
          "ooo.rkt"
          )
 

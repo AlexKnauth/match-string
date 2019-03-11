@@ -13,7 +13,7 @@
          racket/match
          racket/contract/base
          racket/contract/region
-         rackjure/conditionals
+         (only-in anaphoric if-let)
          (only-in racket/base
                   [append rkt:append]
                   [string rkt:string]

@@ -3,7 +3,7 @@
 (define collection 'multi)
 
 (define deps '("base"
-               "rackjure"
+               "anaphoric"
                ))
 
 (define build-deps '("rackunit-lib"
