@@ -10,9 +10,12 @@
          ;---
          list/sp
          listof/sp
+         listof-at-least/sp
          ;---
          cons/sp
          append/sp
+         repeat/sp
+         repeat-at-least/sp
          )
 
 (require racket/list
@@ -113,18 +116,18 @@
 ;; any/sp : [SeqMatcher X ()]
 (define (any/sp xs)
   (cond
-    [(empty? xs) (list (complete '() xs))]
-    [else (list (complete '() xs)
-                (partial any/sp (rest xs)))]))
+    [(pair? xs) (list (complete '() xs)
+                      (partial any/sp (cdr xs)))]
+    [else (list (complete '() xs))]))
 
 ;; var/sp/acc : [Listof X] -> [SeqMatcher X ([Listof X])]
 (define ((var/sp/acc acc) xs)
   (cond
-    [(empty? xs) (list (complete (list (reverse acc)) xs))]
-    [else
+    [(pair? xs)
      (list (complete (list (reverse acc)) xs)
-           (partial (var/sp/acc (cons (first xs) acc))
-                    (rest xs)))]))
+           (partial (var/sp/acc (cons (car xs) acc))
+                    (cdr xs)))]
+    [else (list (complete (list (reverse acc)) xs))]))
 
 ;; var/sp : [SeqMatcher X ([Listof X])]
 (define var/sp (var/sp/acc '()))
@@ -149,25 +152,35 @@
 ;; listof/sp/acc :
 ;;   [Listof [List Y ...]]
 ;;   Natural
+;;   Natural
 ;;   [Matcher X (Y ...)]
 ;;   ->
 ;;   [SeqMatcher X ([Listof Y] ...)]
-(define ((listof/sp/acc acc n elem/p) xs)
+;; The `k` argument represents the minimum number of repetitions.
+;; The `n` argument represents the number of outputs `elem/p` has.
+(define ((listof/sp/acc acc k n elem/p) xs)
   (define loloy
     (cond [(empty? acc) (make-list n '())]
           [else (apply map list (reverse acc))]))
   (cond
-    [(empty? xs)
+    [(pair? xs)
+     (define r (elem/p (car xs)))
+     (cond
+       [(and r (zero? k))
+        (list (complete loloy xs)
+              (partial (listof/sp/acc (cons r acc) 0 n elem/p)
+                       (cdr xs)))]
+       [r
+        (list (partial (listof/sp/acc (cons r acc) (sub1 k) n elem/p)
+                       (cdr xs)))]
+       [(zero? k)
+        (list (complete loloy xs))]
+       [else
+        '()])]
+    [(zero? k)
      (list (complete loloy xs))]
     [else
-     (define r (elem/p (first xs)))
-     (cond
-       [r
-        (list (complete loloy xs)
-              (partial (listof/sp/acc (cons r acc) n elem/p)
-                       (rest xs)))]
-       [else
-        (list (complete loloy xs))])]))
+     '()]))
 
 ;; listof/sp :
 ;;   Natural
@@ -175,7 +188,18 @@
 ;;   ->
 ;;   [SeqMatcher X ([Listof Y] ...)]
 (define (listof/sp n elem/p)
-  (listof/sp/acc '() n elem/p))
+  (listof/sp/acc '() 0 n elem/p))
+
+;; listof-at-least/sp :
+;;   Natural
+;;   Natural
+;;   [Matcher X (Y ...)]
+;;   ->
+;;   [SeqMatcher X ([Listof Y] ...)]
+;; The `k` argument represents the minimum number of repetitions.
+;; The `n` argument represents the number of outputs `elem/p` has.
+(define (listof-at-least/sp k n elem/p)
+  (listof/sp/acc '() k n elem/p))
 
 ;; -----------------------------------------------
 
@@ -227,14 +251,15 @@
 ;;   [SeqMatcher X (Y ...)]
 ;;   ->
 ;;   [SeqMatcher X ([Listof Y] ...)]
-(define ((repeat/sp/acc acc n p1 p2) xs)
+;; The `k` argument represents the minimum number of repetitions.
+;; The `n` argument represents the number of outputs `p1` and `p2` have
+;;   (they both should have the same number n).
+(define ((repeat/sp/acc acc k n p1 p2) xs)
   (define loloy
     (cond [(empty? acc) (make-list n '())]
           [else (apply map list (reverse acc))]))
   (cond
-    [(empty? xs)
-     (list (complete loloy xs))]
-    [else
+    [(pair? xs)
      (define rs (p1 xs))
      (append*
       (for/list ([r (in-list rs)])
@@ -242,14 +267,23 @@
           [(complete vs xs*)
            (when (eqv? xs xs*)
              (error "ellipsis pattern matched empty sequence"))
-           (list (complete loloy xs)
-                 (partial (repeat/sp/acc (cons vs acc) n p2 p2)
-                          xs*))]
+           (cond
+             [(zero? k)
+              (list (complete loloy xs)
+                    (partial (repeat/sp/acc (cons vs acc) 0 n p2 p2)
+                             xs*))]
+             [else
+              (list (partial (repeat/sp/acc (cons vs acc) (sub1 k) n p2 p2)
+                             xs*))])]
           [(partial p1* xs*)
            (when (eqv? xs xs*)
              (error "ellipsis pattern matched empty sequence"))
-           (list (partial (repeat/sp/acc acc n p1* p2)
-                          xs*))])))]))
+           (list (partial (repeat/sp/acc acc k n p1* p2)
+                          xs*))])))]
+    [(zero? k)
+     (list (complete loloy xs))]
+    [else
+     '()]))
 
 ;; repeat/sp :
 ;;   Natural
@@ -257,7 +291,18 @@
 ;;   ->
 ;;   [SeqMatcher X ([Listof Y] ...)]
 (define (repeat/sp n p)
-  (repeat/sp/acc '() n p p))
+  (repeat/sp/acc '() 0 n p p))
+
+;; repeat-at-least/sp :
+;;   Natural
+;;   Natural
+;;   [SeqMatcher X (Y ...)]
+;;   ->
+;;   [SeqMatcher X ([Listof Y] ...)]
+;; The `k` argument represents the minimum number of repetitions.
+;; The `n` argument represents the number of outputs `p` has.
+(define (repeat-at-least/sp k n p)
+  (repeat/sp/acc '() k n p p))
 
 ;; -----------------------------------------------
 
