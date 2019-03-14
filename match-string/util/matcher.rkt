@@ -8,6 +8,7 @@
          pred/p
          equal/p
          and/p
+         refine/p
          ;---
          empty/p
          cons/p
@@ -64,6 +65,11 @@
        (define r (p x))
        (and r
             (loop ps (append-reverse r acc)))])))
+
+;; refine/p : [Matcher X (Y ...)] [[List Y ...] -> Bool] -> [Matcher X (Y ...)]
+(define ((refine/p pat prop) x)
+  (define r (pat x))
+  (and r (prop r) r))
 
 ;; -----------------------------------------------
 
