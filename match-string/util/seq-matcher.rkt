@@ -247,6 +247,7 @@
 ;; repeat/sp/acc :
 ;;   [Listof [List Y ...]]
 ;;   Natural
+;;;  Natural
 ;;   [SeqMatcher X (Y ...)]
 ;;   [SeqMatcher X (Y ...)]
 ;;   ->
@@ -262,19 +263,20 @@
     [(pair? xs)
      (define rs (p1 xs))
      (append*
+      (cond [(zero? k) (list (complete loloy xs))]
+            [else      '()])
       (for/list ([r (in-list rs)])
         (match r
           [(complete vs xs*)
            (when (eqv? xs xs*)
              (error "ellipsis pattern matched empty sequence"))
-           (cond
-             [(zero? k)
-              (list (complete loloy xs)
-                    (partial (repeat/sp/acc (cons vs acc) 0 n p2 p2)
-                             xs*))]
-             [else
-              (list (partial (repeat/sp/acc (cons vs acc) (sub1 k) n p2 p2)
-                             xs*))])]
+           (list
+            (partial (repeat/sp/acc (cons vs acc)
+                                    (if (zero? k) 0 (sub1 k))
+                                    n
+                                    p2
+                                    p2)
+                     xs*))]
           [(partial p1* xs*)
            (when (eqv? xs xs*)
              (error "ellipsis pattern matched empty sequence"))
