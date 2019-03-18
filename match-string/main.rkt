@@ -19,6 +19,7 @@
                   [string rkt:string]
                   [string-append rkt:string-append])
          "ooo.rkt"
+         "string-append.rkt"
          (for-syntax racket/base
                      syntax/parse
                      "syntax-classes.rkt"
@@ -36,19 +37,6 @@
   (substring s 1))
 
 
-
-
-
-(define-match-expander string
-  (lambda (stx) ; as a match pattern
-    (syntax-parse stx
-      [(string) #'""]
-      [(string pat1:pat pat:pat-or-elipsis ...)
-       #'(? string? (app string->list (list pat1 pat.norm ...)))]))
-  (lambda (stx) ; as normal string
-    (syntax-parse stx
-      [(string c ...) #'(rkt:string c ...)]
-      [string #'rkt:string])))
 
 (define (string/c . args)
   (flat-named-contract
@@ -73,70 +61,6 @@
        (try (string->list s) args)))))
 
 
-
-(define-match-expander string-append
-  (lambda (stx) ; as a pattern
-    (syntax-parse stx
-      [(string-append) #'""]
-      [(string-append pat:str-pat)
-       #'(? string? pat.norm)]
-      [(string-append pat:str-pat ooo:ooo)
-       (with-syntax ([pat #'pat.norm] [ooo #'ooo.norm] [k (attribute ooo.k)])
-         #'(app (local [;; try : (Listof String) Natural -> (U (Listof String) #f)
-                        (define (try lst i)
-                          (match lst
-                            [(list)
-                             (cond [(<= k i) '()]
-                                   [else (match ""
-                                           [pat
-                                            (if-let [it (try '() (add1 i))]
-                                                    (cons "" it)
-                                                    #false)]
-                                           [_ #false])])]
-                            [(list "" ..0)
-                             (try '() i)]
-                            [(list-rest (and s1 pat) rest)
-                             (if-let [it (try rest (add1 i))]
-                                     (cons s1 it)
-                                     (failure-cont))]
-                            [(list-rest (string cs ..0 c) s2 rest)
-                             (try (list* (list->string cs) (rkt:string-append (string c) s2) rest) i)]
-                            [(list-rest "" rest)
-                             #false]
-                            [(list val)
-                             (try (list val "") i)]
-                            [_ (error "!!!") #false]))]
-                  (lambda (val)
-                    (and (string? val)
-                         (try (list val) 0))))
-                (list pat ooo)))]
-      [(string-append pat1:str-pat pat2:str-pat)
-       (with-syntax ([pat1 #'pat1.norm] [pat2 #'pat2.norm])
-         #'(app (local [;; String String -> (or/c (list String String) #f)
-                        ;; matches s1 and s2 against pat1 and pat2, and
-                        ;; if the match fails, then it tries again with slightly different strings
-                        (define (try s1 s2)
-                          (match* (s1 s2)
-                            [(pat1 pat2) (list s1 s2)]
-                            [((string cs ..0 c) s2)
-                             (try (list->string cs) (rkt:string-append (string c) s2))]
-                            [("" _) #false]))]
-                  (lambda (val)
-                    (and (string? val)
-                         (try val ""))))
-                (list pat1 pat2)))]
-      [(string-append pat1:str-pat ooo:ooo pat2:str-pat-or-elipsis ...)
-       #'(string-append (string-append pat1.norm ooo.norm) pat2.norm ...)]
-      [(string-append pat1:str-pat pat2:str-pat-or-elipsis ...)
-       #'(string-append pat1.norm (string-append pat2.norm ...))]
-      ))
-  (lambda (stx) ; as normal string-append
-    (syntax-parse stx
-      [(string-append . rest)
-       (quasisyntax/loc stx
-         (#,(syntax/loc #'string-append rkt:string-append) . rest))]
-      [string-append
-       (syntax/loc stx rkt:string-append)])))
 
 (define-match-expander append
   (lambda (stx) ; as a pattern
