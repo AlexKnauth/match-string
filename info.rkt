@@ -4,7 +4,7 @@
 
 (define deps '("base"
                "anaphoric"
-               ))
+               "srfi-lite-lib"))
 
 (define build-deps '("rackunit-lib"
                      "htdp-lib"
