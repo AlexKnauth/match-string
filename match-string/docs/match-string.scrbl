@@ -102,6 +102,6 @@ When it's not used as a @racket[match] expander, it behaves like normal @racket[
 }
 
 @defproc[(string/c [arg (or/c flat-contract? '... '...+ ..k?)] ...) flat-contract?]{
-
+behaves like @racket[list/c], except over strings. That is, @racket[string/c] produces a contract 
+that ensures each character of the string fulfils the contract for that position.
 }
-
